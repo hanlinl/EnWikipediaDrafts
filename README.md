@@ -11,3 +11,10 @@ to `en.wikipedia.org`. Stdlib only.
 
 Caveats: relies on CirrusSearch `insource:` indexing (can lag minutes–hours); drafts that
 have been moved to mainspace or deleted drop out of the Draft namespace.
+
+## Status tracking
+Each run re-checks every known draft and records `status`: `pending`, `declined`, `rejected`,
+`draft (not submitted)`, `approved` (moved to mainspace; `current_title` is the article),
+`deleted` (date/reason/admin from the deletion log), `redirect`, or `moved elsewhere`.
+Accepted drafts are also discovered via a mainspace search. Deleted pages' text can't be read,
+so run regularly: a draft deleted before its first sighting is not recorded.
