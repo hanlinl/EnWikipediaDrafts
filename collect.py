@@ -9,7 +9,7 @@ and were created on/after a cutoff date (default 2026-09-29).
 Uses only the public MediaWiki API (CirrusSearch `insource:` + revision history).
 Results are merged into data/drafts.json and data/drafts.csv, so reruns are incremental.
 """
-import argparse, csv, json, os, sys, time, urllib.parse, urllib.request
+import argparse, csv, json, os, sys, time, urllib.error, urllib.parse, urllib.request
 
 API = "https://en.wikipedia.org/w/api.php"
 UA = "EnWikipediaDraftsCollector/0.1 (research project; contact via repo)"
@@ -17,18 +17,36 @@ PHRASE = "AI assistance was used as follows"
 DATA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 
 
+_last = [0.0]
+
+
 def api(**params):
-    params.update(format="json", formatversion="2")
+    params.update(format="json", formatversion="2", maxlag="5")
     url = API + "?" + urllib.parse.urlencode(params)
-    for attempt in range(5):
+    for attempt in range(12):
+        wait = 1.0 - (time.time() - _last[0])  # polite pacing: ~1 request/sec
+        if wait > 0:
+            time.sleep(wait)
+        _last[0] = time.time()
         try:
             req = urllib.request.Request(url, headers={"User-Agent": UA})
             with urllib.request.urlopen(req, timeout=60) as r:
-                return json.load(r)
-        except Exception as e:
-            if attempt == 4:
+                d = json.load(r)
+            if d.get("error", {}).get("code") == "maxlag":
+                time.sleep(5)
+                continue
+            return d
+        except urllib.error.HTTPError as e:
+            if e.code not in (429, 503) or attempt == 11:
                 raise
-            time.sleep(2 ** attempt)
+            ra = e.headers.get("Retry-After", "")
+            delay = max(int(ra) if ra.isdigit() else 0, 5) * (1 + attempt // 3)
+            print(f"  HTTP {e.code}; waiting {delay}s", file=sys.stderr)
+            time.sleep(delay)
+        except Exception:
+            if attempt == 11:
+                raise
+            time.sleep(min(2 ** attempt, 30))
 
 
 def search_drafts(phrase):
