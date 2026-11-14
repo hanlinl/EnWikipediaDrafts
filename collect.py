@@ -54,7 +54,7 @@ def search_drafts(phrase):
     cont = {}
     while True:
         d = api(action="query", list="search", srsearch=f'insource:"{phrase}"',
-                srnamespace="0|118", srlimit=50, srprop="", **cont)
+                srnamespace="0|118", srlimit=50, srprop="", srsort="create_timestamp_desc", **cont)
         for hit in d["query"]["search"]:
             yield hit["ns"], hit["title"]
         if "continue" not in d:
@@ -83,9 +83,10 @@ def disclosure_text(title):
     i = text.find(PHRASE)
     if i < 0:
         return None  # removed since indexing, or search false positive
-    start = text.rfind("<!--", 0, i)
+    lead = text.rfind("In preparing this draft", max(0, i - 120), i)
+    start = lead if lead >= 0 else i
     end = text.find("-->", i)
-    snippet = text[start if start >= 0 else i: end + 3 if end >= 0 else i + 300]
+    snippet = text[start: end if 0 <= end - i < 2000 else i + 400]
     return " ".join(snippet.split())
 
 
@@ -146,6 +147,18 @@ def resolve_status(rec):
     return {"status": "unknown (move chain too long)", "current_title": title, "status_date": "", "detail": ""}
 
 
+def save(known):
+    path = os.path.join(DATA, "drafts.json")
+    rows = sorted(known.values(), key=lambda r: r["created"])
+    json.dump(known, open(path + ".tmp", "w"), indent=1, ensure_ascii=False)
+    os.replace(path + ".tmp", path)
+    with open(os.path.join(DATA, "drafts.csv"), "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=["created", "title", "status", "status_date", "current_title", "detail", "creator", "url", "disclosure"], extrasaction="ignore")
+        w.writeheader()
+        for r in rows:
+            w.writerow(r)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--since", default="2026-09-29", help="creation date cutoff (UTC, inclusive)")
@@ -162,14 +175,16 @@ def main():
         rec["status_checked"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
     # 2) discover new drafts; Draft: hits first, then mainspace (accepted drafts)
-    hits = sorted(search_drafts(PHRASE), key=lambda h: h[0] != 118)
+    hits = search_drafts(PHRASE)  # newest-created first
     claimed = {r.get("current_title") for r in known.values()} | set(known)
     for ns, title in hits:
         if title in claimed:
             continue
         fr = first_revision(title)
-        if not fr or fr[0][:10] < a.since:
+        if not fr:
             continue
+        if fr[0][:10] < a.since:
+            break  # results are sorted newest-first, so everything after is older
         text = disclosure_text(title)
         if text is None:
             continue
@@ -181,15 +196,10 @@ def main():
         known[title] = rec
         claimed.add(title)
         print("+", title, rec["status"], file=sys.stderr)
+        save(known)
 
-    rows = sorted(known.values(), key=lambda r: r["created"])
-    json.dump(known, open(path, "w"), indent=1, ensure_ascii=False)
-    with open(os.path.join(DATA, "drafts.csv"), "w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=["created", "title", "status", "status_date", "current_title", "detail", "creator", "url", "disclosure"], extrasaction="ignore")
-        w.writeheader()
-        for r in rows:
-            w.writerow(r)
-    print(f"{len(rows)} drafts total", file=sys.stderr)
+    save(known)
+    print(f"{len(known)} drafts total", file=sys.stderr)
 
 
 if __name__ == "__main__":
