@@ -27,10 +27,6 @@
    113
   ],
   [
-   "chatgpt.com",
-   103
-  ],
-  [
    "youtube.com",
    99
   ],
@@ -75,11 +71,11 @@
    22
   ],
   [
-   "researchgate.net",
+   "archive.org",
    22
   ],
   [
-   "archive.org",
+   "researchgate.net",
    22
   ],
   [
@@ -139,20 +135,12 @@
    14
   ],
   [
-   "claude.ai",
-   14
-  ],
-  [
    "latimes.com",
    14
   ],
   [
    "newindianexpress.com",
    13
-  ],
-  [
-   "share.gemini.google",
-   12
   ],
   [
    "washingtonpost.com",
@@ -180,6 +168,18 @@
   ],
   [
    "commons.wikimedia.org",
+   10
+  ],
+  [
+   "broadwayworld.com",
+   10
+  ],
+  [
+   "patents.google.com",
+   10
+  ],
+  [
+   "ndtv.com",
    10
   ]
  ]
