@@ -1,0 +1,186 @@
+{
+ "drafts_analysed": 1379,
+ "no_ref_tags_pct": 12.8,
+ "median_ref_tags": 13,
+ "mean_ref_tags": 19.6,
+ "ref_count_buckets": {
+  "0": 176,
+  "1-4": 159,
+  "5-14": 415,
+  "15+": 629
+ },
+ "with_cite_templates_pct": 83.2,
+ "with_doi_pct": 12.7,
+ "with_isbn_pct": 11.7,
+ "with_wikipedia_links_pct": 4.2,
+ "with_social_or_blog_pct": 14.9,
+ "with_bare_url_refs_pct": 1.8,
+ "with_reflist_pct": 93.5,
+ "ai_markers_pct": {
+  "utm_source=chatgpt": 1.7,
+  "oaicite/contentReference": 0.1,
+  "markdown bold/headings": 4.7
+ },
+ "top_domains_by_drafts": [
+  [
+   "web.archive.org",
+   113
+  ],
+  [
+   "chatgpt.com",
+   103
+  ],
+  [
+   "youtube.com",
+   99
+  ],
+  [
+   "instagram.com",
+   49
+  ],
+  [
+   "doi.org",
+   44
+  ],
+  [
+   "theguardian.com",
+   34
+  ],
+  [
+   "linkedin.com",
+   34
+  ],
+  [
+   "timesofindia.indiatimes.com",
+   31
+  ],
+  [
+   "imdb.com",
+   28
+  ],
+  [
+   "en.wikipedia.org",
+   28
+  ],
+  [
+   "nytimes.com",
+   27
+  ],
+  [
+   "open.spotify.com",
+   27
+  ],
+  [
+   "music.apple.com",
+   22
+  ],
+  [
+   "researchgate.net",
+   22
+  ],
+  [
+   "archive.org",
+   22
+  ],
+  [
+   "facebook.com",
+   19
+  ],
+  [
+   "books.google.com",
+   18
+  ],
+  [
+   "abc.net.au",
+   17
+  ],
+  [
+   "github.com",
+   17
+  ],
+  [
+   "link.springer.com",
+   16
+  ],
+  [
+   "techcrunch.com",
+   16
+  ],
+  [
+   "prnewswire.com",
+   16
+  ],
+  [
+   "indianexpress.com",
+   16
+  ],
+  [
+   "discogs.com",
+   16
+  ],
+  [
+   "thehindu.com",
+   15
+  ],
+  [
+   "find-and-update.company-information.service.gov.uk",
+   15
+  ],
+  [
+   "forbes.com",
+   14
+  ],
+  [
+   "podcasts.apple.com",
+   14
+  ],
+  [
+   "google.com",
+   14
+  ],
+  [
+   "claude.ai",
+   14
+  ],
+  [
+   "latimes.com",
+   14
+  ],
+  [
+   "newindianexpress.com",
+   13
+  ],
+  [
+   "share.gemini.google",
+   12
+  ],
+  [
+   "washingtonpost.com",
+   12
+  ],
+  [
+   "bbc.co.uk",
+   12
+  ],
+  [
+   "scholar.google.com",
+   12
+  ],
+  [
+   "hindustantimes.com",
+   11
+  ],
+  [
+   "sciencedirect.com",
+   11
+  ],
+  [
+   "allmusic.com",
+   10
+  ],
+  [
+   "commons.wikimedia.org",
+   10
+  ]
+ ]
+}

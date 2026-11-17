@@ -24,6 +24,11 @@ SOCIAL = {"linkedin.com", "facebook.com", "instagram.com", "x.com", "twitter.com
           "youtu.be", "tiktok.com", "medium.com", "wordpress.com", "blogspot.com", "substack.com"}
 
 
+# chatbot transcript links live in the disclosure comment, not in the sources
+CHAT = ("chatgpt.com", "chat.openai.com", "claude.ai", "share.gemini.google", "gemini.google.com",
+        "g.co", "copilot.microsoft.com", "perplexity.ai", "grok.com", "chat.deepseek.com")
+
+
 def domain(u):
     h = urllib.parse.urlsplit(u).netloc.lower().split(":")[0]
     return h[4:] if h.startswith("www.") else h
@@ -33,9 +38,13 @@ def analyse(text):
     refs = [m.group(0) for m in REF.finditer(text)]
     urls = URL.findall(text)
     doms = [domain(u) for u in urls]
+    out_chat = sum(1 for d in doms if d in CHAT)
+    doms = [d for d in doms if d not in CHAT]
+    urls = [u for u in urls if domain(u) not in CHAT]
     wp = [d for d in doms if d.endswith("wikipedia.org") or d.endswith("wikimedia.org")]
     out = {
         "chars": len(text),
+        "n_chat_links": out_chat,
         "n_ref_tags": len(REF_ANY.findall(text)),
         "n_urls": len(urls),
         "n_domains": len(set(doms)),
