@@ -181,13 +181,41 @@ def resolve_status(rec, st0=None):
     return {"status": "unknown (move chain too long)", "current_title": title, "status_date": "", "detail": ""}
 
 
+def history_info(title, max_revs=500):
+    """Walk a draft's history oldest-first (50 revisions with content per request).
+    Returns creation time/creator, when the disclosure first appeared and when the draft
+    was first submitted for AfC review ({{AfC submission}} in the pending state)."""
+    info = {"created": "", "creator": "", "disclosed_at": "", "submitted_at": ""}
+    cont, seen = {}, 0
+    while True:
+        d = api(action="query", prop="revisions", titles=title, rvdir="newer", rvlimit=50,
+                rvprop="timestamp|user|content", rvslots="main", **cont)
+        p = d["query"]["pages"][0]
+        if p.get("missing") or not p.get("revisions"):
+            return None if not seen else info
+        for r in p["revisions"]:
+            if not seen:
+                info["created"], info["creator"] = r["timestamp"], r.get("user", "")
+            seen += 1
+            text = (r.get("slots", {}).get("main", {}) or {}).get("content", "")
+            if not info["disclosed_at"] and NORM in " ".join(text.lower().split()):
+                info["disclosed_at"] = r["timestamp"]
+            if not info["submitted_at"]:
+                m = AFC.search(text)
+                if m and m.group(1).strip().lower() in ("", "t"):
+                    info["submitted_at"] = r["timestamp"]
+        if (info["disclosed_at"] and info["submitted_at"]) or "continue" not in d or seen >= max_revs:
+            return info
+        cont = d["continue"]
+
+
 def save(known):
     path = os.path.join(DATA, "drafts.json")
     rows = sorted(known.values(), key=lambda r: r["created"])
     json.dump(known, open(path + ".tmp", "w"), indent=1, ensure_ascii=False)
     os.replace(path + ".tmp", path)
     with open(os.path.join(DATA, "drafts.csv"), "w", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=["created", "title", "status", "status_date", "current_title", "detail", "creator", "url", "disclosure"], extrasaction="ignore")
+        w = csv.DictWriter(f, fieldnames=["created", "title", "status", "status_date", "current_title", "detail", "creator", "submitted_at", "disclosed_at", "url", "disclosure"], extrasaction="ignore")
         w.writeheader()
         for r in rows:
             w.writerow(r)
@@ -199,6 +227,8 @@ def main():
     ap.add_argument("--lookback-days", type=int, default=14,
                     help="stop paging search results once a known draft older than this is reached "
                          "(0 = page all the way back to --since)")
+    ap.add_argument("--backfill", type=int, default=40,
+                    help="max older records per run to fill in submitted_at/disclosed_at")
     a = ap.parse_args()
     os.makedirs(DATA, exist_ok=True)
     path = os.path.join(DATA, "drafts.json")
@@ -239,16 +269,17 @@ def main():
             i = " ".join(text.split()).lower().find(NORM)
             if st["missing"] or st["redirect"] or i < 0:
                 continue
-            fr = first_revision(title)
-            if not fr:
+            hi = history_info(title)
+            if not hi:
                 continue
-            if fr[0][:10] < a.since:
+            if hi["created"][:10] < a.since:
                 done = True  # newest-first: everything after is older
                 break
             rec = {"title": title,
                    "url": "https://en.wikipedia.org/wiki/" + urllib.parse.quote(title.replace(" ", "_")),
-                   "created": fr[0], "creator": fr[1], "disclosure": snippet(text),
-                   "first_seen": stamp()}
+                   "created": hi["created"], "creator": hi["creator"], "disclosure": snippet(text),
+                   "submitted_at": hi["submitted_at"], "disclosed_at": hi["disclosed_at"],
+                   "history_checked": stamp(), "first_seen": stamp()}
             rec.update(resolve_status(rec, st))
             known[title] = rec
             claimed.add(title)
@@ -259,8 +290,20 @@ def main():
             break
         cont = d["continue"]
 
+    # 3) backfill submission/disclosure times for older records, newest first, a few per run
+    todo = sorted((r for r in known.values() if "history_checked" not in r),
+                  key=lambda r: r["created"], reverse=True)[:a.backfill]
+    for rec in todo:
+        t = rec.get("current_title", rec["title"])
+        hi = history_info(t) or history_info(rec["title"])
+        rec["history_checked"] = stamp()
+        if hi:
+            rec["submitted_at"], rec["disclosed_at"] = hi["submitted_at"], hi["disclosed_at"]
+    if todo:
+        save(known)
+    left = sum("history_checked" not in r for r in known.values())
+    print(f"{new} new; {len(known)} drafts total; backfilled {len(todo)} ({left} left)", file=sys.stderr)
     save(known)
-    print(f"{new} new; {len(known)} drafts total", file=sys.stderr)
 
 
 if __name__ == "__main__":
