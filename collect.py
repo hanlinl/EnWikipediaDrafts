@@ -72,6 +72,21 @@ def first_revision(title):
     return r["timestamp"], r["user"]
 
 
+NORM = " ".join(PHRASE.lower().split())
+
+
+def snippet(text):
+    """Disclosure text from wikitext: lead-in sentence through end of the comment/template."""
+    flat = " ".join(text.split())
+    i = flat.lower().find(NORM)
+    if i < 0:
+        return None
+    lead = flat.lower().rfind("in preparing this draft", max(0, i - 120), i)
+    start = lead if lead >= 0 else i
+    end = flat.find("-->", i)
+    return flat[start: end if 0 <= end - i < 2000 else i + 400]
+
+
 def disclosure_text(title):
     """Return the disclosure comment text from current wikitext, verifying the match."""
     d = api(action="query", prop="revisions", titles=title, rvprop="content",
@@ -100,22 +115,41 @@ def log_events(title, letype):
     return d["query"]["logevents"]
 
 
-def page_state(title):
-    d = api(action="query", prop="info|revisions", titles=title, rvprop="content",
-            rvslots="main")
-    p = d["query"]["pages"][0]
+def _st(p):
     text = ""
     if p.get("revisions"):
-        text = p["revisions"][0]["slots"]["main"]["content"]
+        text = (p["revisions"][0].get("slots", {}).get("main", {}) or {}).get("content", "")
     return {"missing": bool(p.get("missing")), "redirect": bool(p.get("redirect")),
             "ns": p.get("ns"), "text": text}
 
 
-def resolve_status(rec):
-    """Work out where a draft is now. Returns dict of status fields (follows moves)."""
+def page_state(title):
+    d = api(action="query", prop="info|revisions", titles=title, rvprop="content",
+            rvslots="main")
+    return _st(d["query"]["pages"][0])
+
+
+def page_states(titles):
+    """Current state of many titles (<=50 per request). Returns {title: state}."""
+    out = {}
+    for i in range(0, len(titles), 50):
+        chunk = titles[i:i + 50]
+        d = api(action="query", prop="info|revisions", titles="|".join(chunk),
+                rvprop="content", rvslots="main")
+        alias = {n["from"]: n["to"] for n in d["query"].get("normalized", [])}
+        by_title = {p["title"]: _st(p) for p in d["query"]["pages"]}
+        for t in chunk:
+            if alias.get(t, t) in by_title:
+                out[t] = by_title[alias.get(t, t)]
+    return out
+
+
+def resolve_status(rec, st0=None):
+    """Work out where a draft is now. Returns dict of status fields (follows moves).
+    st0: optional pre-fetched state of the first title (saves a request)."""
     title = rec.get("current_title", rec["title"])
-    for _ in range(6):
-        st = page_state(title)
+    for hop in range(6):
+        st = st0 if (hop == 0 and st0 is not None) else page_state(title)
         if st["missing"] or st["redirect"]:
             moves = [m for m in log_events(title, "move") if (m.get("params") or {}).get("target_title")]
             if moves:
@@ -162,44 +196,71 @@ def save(known):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--since", default="2026-09-29", help="creation date cutoff (UTC, inclusive)")
+    ap.add_argument("--lookback-days", type=int, default=14,
+                    help="stop paging search results once a known draft older than this is reached "
+                         "(0 = page all the way back to --since)")
     a = ap.parse_args()
     os.makedirs(DATA, exist_ok=True)
     path = os.path.join(DATA, "drafts.json")
     known = json.load(open(path)) if os.path.exists(path) else {}
+    stamp = lambda: time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
-    # 1) refresh status of everything already known (deleted drafts stay deleted)
-    for rec in known.values():
-        if rec.get("status") == "deleted":
-            continue
-        rec.update(resolve_status(rec))
-        rec["status_checked"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    # 1) refresh status of known drafts, 50 per request (deleted drafts stay deleted)
+    live = [r for r in known.values() if r.get("status") != "deleted"]
+    states = page_states([r.get("current_title", r["title"]) for r in live])
+    for rec in live:
+        t = rec.get("current_title", rec["title"])
+        rec.update(resolve_status(rec, states.get(t)))
+        rec["status_checked"] = stamp()
+    save(known)
+    print(f"refreshed {len(live)} known drafts", file=sys.stderr)
 
-    # 2) discover new drafts; Draft: hits first, then mainspace (accepted drafts)
-    hits = search_drafts(PHRASE)  # newest-created first
+    # 2) discover new drafts: search results arrive newest-created first, content included
     claimed = {r.get("current_title") for r in known.values()} | set(known)
-    for ns, title in hits:
-        if title in claimed:
-            continue
-        fr = first_revision(title)
-        if not fr:
-            continue
-        if fr[0][:10] < a.since:
-            break  # results are sorted newest-first, so everything after is older
-        text = disclosure_text(title)
-        if text is None:
-            continue
-        rec = {"title": title,
-               "url": "https://en.wikipedia.org/wiki/" + urllib.parse.quote(title.replace(" ", "_")),
-               "created": fr[0], "creator": fr[1], "disclosure": text,
-               "first_seen": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
-        rec.update(resolve_status(rec))
-        known[title] = rec
-        claimed.add(title)
-        print("+", title, rec["status"], file=sys.stderr)
-        save(known)
+    horizon = ""
+    if a.lookback_days:
+        horizon = time.strftime("%Y-%m-%d", time.gmtime(time.time() - a.lookback_days * 86400))
+    cont, done, new = {}, False, 0
+    while not done:
+        d = api(action="query", generator="search", gsrsearch=f'insource:"{PHRASE}"',
+                gsrnamespace="0|118", gsrlimit=50, gsrsort="create_timestamp_desc",
+                prop="info|revisions", rvprop="content", rvslots="main", **cont)
+        pages = sorted(d.get("query", {}).get("pages", []), key=lambda p: p.get("index", 0))
+        for p in pages:
+            title = p["title"]
+            if title in claimed:
+                rec = known.get(title)
+                if horizon and rec and rec["created"][:10] < horizon:
+                    done = True
+                    break
+                continue
+            st = _st(p)
+            text = st["text"]
+            i = " ".join(text.split()).lower().find(NORM)
+            if st["missing"] or st["redirect"] or i < 0:
+                continue
+            fr = first_revision(title)
+            if not fr:
+                continue
+            if fr[0][:10] < a.since:
+                done = True  # newest-first: everything after is older
+                break
+            rec = {"title": title,
+                   "url": "https://en.wikipedia.org/wiki/" + urllib.parse.quote(title.replace(" ", "_")),
+                   "created": fr[0], "creator": fr[1], "disclosure": snippet(text),
+                   "first_seen": stamp()}
+            rec.update(resolve_status(rec, st))
+            known[title] = rec
+            claimed.add(title)
+            new += 1
+            print("+", title, rec["status"], file=sys.stderr)
+            save(known)
+        if "continue" not in d:
+            break
+        cont = d["continue"]
 
     save(known)
-    print(f"{len(known)} drafts total", file=sys.stderr)
+    print(f"{new} new; {len(known)} drafts total", file=sys.stderr)
 
 
 if __name__ == "__main__":
